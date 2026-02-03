@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空間図形ビジュアライザー（修正完了版）</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif; background-color: #1a1a1a; color: white; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            width: 320px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            border: 1px solid #333;
+            pointer-events: auto; /* UIへのクリックを有効化 */
+            display: flex;
+            flex-direction: column;
+        }
+
+        #ui-container::-webkit-scrollbar { width: 8px; }
+        #ui-container::-webkit-scrollbar-track { background: #222; }
+        #ui-container::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+        h1 { font-size: 18px; margin: 0 0 10px 0; color: #4facfe; border-bottom: 1px solid #444; padding-bottom: 10px; text-align: center;}
+
+        /* Mode Switch Tabs */
+        .mode-tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .mode-tab {
+            flex: 1;
+            padding: 8px;
+            background: #333;
+            border: 1px solid #555;
+            color: #aaa;
+            cursor: pointer;
+            text-align: center;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .mode-tab.active { background: #4facfe; color: white; border-color: #4facfe; }
+
+        /* Common Styles */
+        h2 { font-size: 13px; margin: 10px 0 8px 0; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 15px; }
+        
+        /* Shape Selection Buttons */
+        .shape-btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        .shape-btn {
+            background: #222;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 10px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            text-align: center;
+        }
+        .shape-btn:hover { background: #333; }
+        .shape-btn.active { background: #4facfe; color: white; border-color: #4facfe; font-weight: bold; }
+
+        .quiz-btn {
+            font-size: 14px;
+            text-align: center;
+            justify-content: center;
+            padding: 12px 4px;
+            background: #444;
+            font-weight: bold;
+            border: 1px solid #555;
+            color: #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .quiz-btn:hover { background: #555; }
+        .quiz-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .action-btn {
+            background: #e67e22;
+            border: 1px solid #d35400;
+            color: white;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+            height: 48px;
+            width: 100%;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .action-btn:hover { background: #f39c12; }
+
+        /* Game Specific Styles */
+        .game-status {
+            background: #222;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            border: 1px solid #444;
+        }
+        .score-display { color: #f1c40f; font-size: 16px; }
+        
+        .game-question {
+            background: rgba(79, 172, 254, 0.2);
+            border: 1px solid #4facfe;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .reset-btn {
+            width:100%; 
+            margin-top:15px; 
+            background:#333; 
+            border:1px solid #555; 
+            color:#ddd; 
+            padding:10px; 
+            border-radius:6px; 
+            cursor:pointer;
+        }
+        .reset-btn:hover { background:#444; }
+
+        #camera-reset-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border: 1px solid #555;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+            transition: background 0.2s;
+        }
+        #camera-reset-btn:hover { background: rgba(0,0,0,0.9); border-color: #888; }
+
+        #description-box {
+            margin-top: auto;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid #4facfe;
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .legend {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            font-size: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+        
+        @media (max-width: 600px) {
+            #ui-container {
+                top: auto; bottom: 0; left: 0; width: 100%;
+                border-radius: 12px 12px 0 0; padding: 15px;
+                max-height: 50vh;
+            }
+            #camera-reset-btn {
+                bottom: 50vh;
+                right: 10px;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <button id="camera-reset-btn" onclick="resetCamera()">⟲ 視点を戻す</button>
+
+    <div id="ui-container">
+        <h1>空間図形ビジュアライザー</h1>
+        
+        <div class="mode-tabs">
+            <div class="mode-tab active" id="tab-free" onclick="switchMode('free')">自由研究</div>
+            <div class="mode-tab" id="tab-game" onclick="switchMode('game')">練習モード</div>
+        </div>
+
+        <!-- FREE MODE UI -->
+        <div id="free-mode-ui">
+            <h2>図形を選択</h2>
+            <div class="shape-btn-group">
+                <button onclick="setShape('cuboid')" id="btn-shape-cuboid" class="shape-btn active">直方体</button>
+                <button onclick="setShape('tri_prism')" id="btn-shape-tri_prism" class="shape-btn">三角柱</button>
+                <button onclick="setShape('penta_prism')" id="btn-shape-penta_prism" class="shape-btn">五角柱</button>
+                <button onclick="setShape('trapezoid_prism')" id="btn-shape-trapezoid_prism" class="shape-btn">台形柱</button>
+            </div>
+
+            <div id="controls-interactive">
+                <div id="quiz-instruction" style="font-size:14px; color:#ddd; min-height: 20px; font-weight:bold; margin-bottom:5px;">
+                    ① 基準となる「辺」か「面」をクリック
+                </div>
+                
+                <div id="quiz-questions" style="display:none; gap:8px; grid-template-columns: 1fr 1fr;">
+                    <button onclick="startQuiz('parallel', 'edge')" class="quiz-btn">平行な「辺」</button>
+                    <button onclick="startQuiz('parallel', 'face')" class="quiz-btn">平行な「面」</button>
+                    <button onclick="startQuiz('perpendicular', 'edge')" class="quiz-btn">垂直な「辺」</button>
+                    <button onclick="startQuiz('perpendicular', 'face')" class="quiz-btn">垂直な「面」</button>
+                    <button onclick="startQuiz('skew', 'edge')" id="btn-quiz-skew" class="quiz-btn" style="grid-column: span 2; background: #2c3e50; border-color: #4facfe;">ねじれの位置</button>
+                </div>
+
+                <div id="quiz-actions" style="display:none; margin-top:5px;">
+                    <button onclick="checkAnswer()" class="action-btn">答え合わせ！</button>
+                </div>
+                <button onclick="resetInteractive()" class="reset-btn">選択をリセット</button>
+            </div>
+        </div>
+
+        <!-- GAME MODE UI -->
+        <div id="game-mode-ui" style="display:none;">
+            <div id="game-start-screen">
+                <p style="font-size:14px; color:#ccc;">ランダムな図形と問題が<b>5問連続</b>で出題されます。</p>
+                <p style="font-size:14px; color:#ccc;">満点を目指して頑張りましょう！</p>
+                <button onclick="startGame()" class="action-btn" style="margin-top:20px;">スタート！</button>
+            </div>
+
+            <div id="game-play-screen" style="display:none;">
+                <div class="game-status">
+                    <span id="game-progress">第 1 / 5 問</span>
+                    <span class="score-display">得点: <span id="game-score">0</span></span>
+                </div>
+                
+                <div id="game-question-box" class="game-question">
+                    問題を読み込み中...
+                </div>
+
+                <div id="game-action-area" style="margin-top:10px;">
+                    <button onclick="checkGameAnswer()" id="btn-game-check" class="action-btn">決定</button>
+                    <button onclick="nextGameQuestion()" id="btn-game-next" class="action-btn" style="display:none; background:#2ecc71; border-color:#27ae60;">次の問題へ</button>
+                </div>
+            </div>
+
+            <div id="game-result-screen" style="display:none; text-align:center;">
+                <h2 style="font-size:20px; color:#f1c40f; margin:20px 0;">結果発表</h2>
+                <div style="font-size:48px; font-weight:bold; margin-bottom:10px;" id="final-score">0</div>
+                <div style="font-size:16px; color:#aaa; margin-bottom:20px;">点 / 100点</div>
+                <p id="final-comment" style="color:#fff; margin-bottom:20px;"></p>
+                <button onclick="startGame()" class="action-btn">もう一度挑戦</button>
+            </div>
+        </div>
+
+        <div id="description-box">
+            モードを選んでください。
+        </div>
+
+        <div class="legend" id="legend-quiz">
+            <div><span class="dot" style="background:#ff00ff"></span> 基準</div>
+            <div><span class="dot" style="background:#ffff00"></span> 選択中</div>
+            <div><span class="dot" style="background:#00ff00"></span> 正解</div>
+            <div><span class="dot" style="background:#00ffff"></span> 見逃し</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Three.js Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x222222);
+
+        const initialCameraPos = new THREE.Vector3(12, 10, 12);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.copy(initialCameraPos);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 7);
+        scene.add(directionalLight);
+        
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        let contentGroup = new THREE.Group();
+        scene.add(contentGroup);
+        
+        // --- State Variables ---
+        let currentAppMode = 'free'; 
+        let currentShapeType = 'cuboid';
+        let interactiveObjects = []; 
+        let quizState = 'idle'; 
+        let refObject = null;
+        let targetType = null;
+        let relationType = null;
+        let userSelectedIds = new Set();
+
+        let gameState = {
+            currentQuestion: 0,
+            totalQuestions: 5,
+            score: 0,
+            isAnswering: false
+        };
+
+        // --- Camera Control ---
+        function updateCameraViewOffset() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            if (width > 600) {
+                const xOffset = -(width * 0.15); 
+                camera.setViewOffset(width, height, xOffset, 0, width, height);
+            } else {
+                const yOffset = -(height * 0.15);
+                camera.setViewOffset(width, height, 0, yOffset, width, height);
+            }
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        function resetCamera() {
+            camera.position.copy(initialCameraPos);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        // --- Vector Math ---
+        const TOLERANCE = 0.05; 
+        function areVectorsParallel(v1, v2) { return new THREE.Vector3().crossVectors(v1, v2).length() < TOLERANCE; }
+        function areVectorsPerpendicular(v1, v2) { return Math.abs(v1.dot(v2)) < TOLERANCE; }
+        function getMinDistanceEdges(e1, e2) {
+            const p1 = e1.p1, p2 = e1.p2, p3 = e2.p1, p4 = e2.p2;
+            if (p1.distanceTo(p3)<TOLERANCE || p1.distanceTo(p4)<TOLERANCE || p2.distanceTo(p3)<TOLERANCE || p2.distanceTo(p4)<TOLERANCE) return 0;
+            return 1; 
+        }
+
+        // --- Builders (Common) ---
+        function createPipe(p1, p2, radius, color) {
+            const path = new THREE.LineCurve3(p1, p2);
+            // セグメント数を増やしてヒット判定を向上
+            const geo = new THREE.TubeGeometry(path, 1, radius, 8, false); 
+            const mat = new THREE.MeshStandardMaterial({ color: color });
+            const mesh = new THREE.Mesh(geo, mat);
+            const vec = new THREE.Vector3().subVectors(p2, p1).normalize();
+            mesh.userData = { type: 'edge', p1: p1, p2: p2, vector: vec, id: Math.random().toString(36).substr(2, 9) };
+            return mesh;
+        }
+
+        function createPolygon(vertices, color, opacity=0.2) {
+            const center = new THREE.Vector3(); vertices.forEach(v => center.add(v)); center.divideScalar(vertices.length);
+            const vA = new THREE.Vector3().subVectors(vertices[1], vertices[0]);
+            const vB = new THREE.Vector3().subVectors(vertices[2], vertices[0]);
+            const normal = new THREE.Vector3().crossVectors(vA, vB).normalize();
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            for (let i = 1; i < vertices.length - 1; i++) {
+                positions.push(vertices[0].x, vertices[0].y, vertices[0].z, vertices[i].x, vertices[i].y, vertices[i].z, vertices[i+1].x, vertices[i+1].y, vertices[i+1].z);
+            }
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.computeVertexNormals();
+            const mat = new THREE.MeshStandardMaterial({ color: color, opacity: opacity, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+            const mesh = new THREE.Mesh(geometry, mat);
+            mesh.userData = { type: 'face', normal: normal, center: center, vertices: vertices, id: Math.random().toString(36).substr(2, 9) };
+            return mesh;
+        }
+
+        function addObj(mesh) { contentGroup.add(mesh); interactiveObjects.push(mesh); }
+
+        // --- Shape Builders ---
+        function buildCuboid() {
+            const w=6, h=4, d=4, x=w/2, y=h/2, z=d/2;
+            const v = [ new THREE.Vector3(-x,y,z), new THREE.Vector3(x,y,z), new THREE.Vector3(-x,-y,z), new THREE.Vector3(x,-y,z), new THREE.Vector3(-x,y,-z), new THREE.Vector3(x,y,-z), new THREE.Vector3(-x,-y,-z), new THREE.Vector3(x,-y,-z)];
+            [[0,1],[2,3],[0,2],[1,3],[4,5],[6,7],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]].forEach(p=>addObj(createPipe(v[p[0]], v[p[1]], 0.2, 0xaaaaaa)));
+            [[0,2,3,1],[5,7,6,4],[4,6,2,0],[1,3,7,5],[0,1,5,4],[2,6,7,3]].forEach(i=>addObj(createPolygon(i.map(k=>v[k]), 0x888888, 0.3)));
+        }
+
+        function buildTriangularPrism() {
+            const h=5, sx=5, sz=3;
+            // 横長
+            const v = [ new THREE.Vector3(-sx,h/2,sz), new THREE.Vector3(sx,h/2,sz), new THREE.Vector3(-sx,h/2,-sz), new THREE.Vector3(-sx,-h/2,sz), new THREE.Vector3(sx,-h/2,sz), new THREE.Vector3(-sx,-h/2,-sz) ];
+            // 右に移動し少し回転 (安全なコピーで実行)
+            const vSafe = v.map(p => { 
+                const nc = p.clone().applyAxisAngle(new THREE.Vector3(0,1,0), -0.3);
+                nc.x += 2.5; 
+                return nc;
+            });
+            [[0,1],[1,2],[2,0],[3,4],[4,5],[5,3],[0,3],[1,4],[2,5]].forEach(p=>addObj(createPipe(vSafe[p[0]], vSafe[p[1]], 0.2, 0xaaaaaa)));
+            [[0,2,1],[3,4,5],[0,1,4,3],[1,2,5,4],[2,0,3,5]].forEach(i=>addObj(createPolygon(i.map(k=>vSafe[k]), 0x888888, 0.3)));
+        }
+
+        function buildPentagonalPrism() {
+            const r=3, h=5, yt=h/2, yb=-h/2, v=[];
+            for(let i=0;i<5;i++){ let th=(i*2*Math.PI/5)-Math.PI/2; v.push(new THREE.Vector3(r*Math.cos(th),yt,r*Math.sin(th))); }
+            for(let i=0;i<5;i++){ let th=(i*2*Math.PI/5)-Math.PI/2; v.push(new THREE.Vector3(r*Math.cos(th),yb,r*Math.sin(th))); }
+            for(let i=0;i<5;i++){ addObj(createPipe(v[i],v[(i+1)%5],0.2,0xaaaaaa)); addObj(createPipe(v[i+5],v[((i+1)%5)+5],0.2,0xaaaaaa)); addObj(createPipe(v[i],v[i+5],0.2,0xaaaaaa)); }
+            addObj(createPolygon([0,1,2,3,4].map(k=>v[k]),0x888888,0.3)); addObj(createPolygon([9,8,7,6,5].map(k=>v[k]),0x888888,0.3));
+            for(let i=0;i<5;i++){ addObj(createPolygon([v[i],v[(i+1)%5],v[(i+1)%5+5],v[i+5]],0x888888,0.3)); }
+        }
+
+        function buildTrapezoidalPrism() {
+            const wb=6, wt=3, h=4, d=5, yu=h/2, yd=-h/2, zf=d/2, zb=-d/2;
+            const xl=-wb/2, xrb=wb/2, xrt=xl+wt;
+            const v = [
+                new THREE.Vector3(xl,yu,zf), new THREE.Vector3(xrt,yu,zf), new THREE.Vector3(xl,yu,zb), new THREE.Vector3(xrt,yu,zb),
+                new THREE.Vector3(xl,yd,zf), new THREE.Vector3(xrb,yd,zf), new THREE.Vector3(xl,yd,zb), new THREE.Vector3(xrb,yd,zb)
+            ];
+            const edges = [[0,1],[2,3],[0,2],[1,3], [4,5],[6,7],[4,6],[5,7], [0,4],[1,5],[2,6],[3,7]];
+            edges.forEach(p=>addObj(createPipe(v[p[0]], v[p[1]], 0.2, 0xaaaaaa)));
+            const faces = [[0,2,3,1],[4,5,7,6],[0,1,5,4],[3,2,6,7],[0,4,6,2],[1,3,7,5]];
+            faces.forEach(i=>addObj(createPolygon(i.map(k=>v[k]), 0x888888, 0.3)));
+        }
+
+        // --- App Logic ---
+
+        function switchMode(mode) {
+            currentAppMode = mode;
+            document.querySelectorAll('.mode-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(`tab-${mode}`).classList.add('active');
+
+            if (mode === 'free') {
+                document.getElementById('free-mode-ui').style.display = 'block';
+                document.getElementById('game-mode-ui').style.display = 'none';
+                document.getElementById('description-box').innerHTML = "図形をクリックしてスタートしてください。";
+                setShape('cuboid');
+            } else {
+                document.getElementById('free-mode-ui').style.display = 'none';
+                document.getElementById('game-mode-ui').style.display = 'block';
+                document.getElementById('game-start-screen').style.display = 'block';
+                document.getElementById('game-play-screen').style.display = 'none';
+                document.getElementById('game-result-screen').style.display = 'none';
+                document.getElementById('description-box').innerHTML = "練習モードでは、ランダムな問題に挑戦します。";
+                clearScene();
+                buildCuboid();
+                interactiveObjects.forEach(o => o.visible = false);
+            }
+        }
+
+        function setShape(type) {
+            currentShapeType = type;
+            document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-shape-${type}`).classList.add('active');
+            resetInteractive();
+        }
+
+        function resetInteractive() {
+            quizState = 'idle';
+            refObject = null; targetType = null; relationType = null; userSelectedIds.clear();
+            document.getElementById('quiz-questions').style.display = 'none';
+            document.getElementById('quiz-actions').style.display = 'none';
+            document.getElementById('quiz-instruction').innerHTML = "① 基準となる「辺」か「面」をクリック";
+            if(currentAppMode === 'free') updateDescription("図形をクリックしてスタートしてください。");
+
+            clearScene();
+            if(currentShapeType === 'cuboid') buildCuboid();
+            else if(currentShapeType === 'tri_prism') buildTriangularPrism();
+            else if(currentShapeType === 'penta_prism') buildPentagonalPrism();
+            else if(currentShapeType === 'trapezoid_prism') buildTrapezoidalPrism();
+        }
+
+        function clearScene() {
+            scene.remove(contentGroup);
+            contentGroup = new THREE.Group();
+            scene.add(contentGroup);
+            interactiveObjects = [];
+        }
+
+        // --- Interaction Handlers ---
+
+        function onMouseClick(event) {
+            // UI要素（ボタンなど）の上でのクリックは無視する
+            if (event.target.tagName === 'BUTTON' || event.target.closest('#ui-container') || event.target.closest('#camera-reset-btn')) {
+                return;
+            }
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(interactiveObjects);
+
+            if (intersects.length > 0) {
+                let hit = intersects[0].object;
+                const edgeHit = intersects.find(i => i.object.userData.type === 'edge');
+                // 面越しに辺をクリックできるようにする（優先度: 辺 > 面）
+                if (edgeHit) hit = edgeHit.object;
+
+                if (currentAppMode === 'free') {
+                    if (quizState === 'idle') setReferenceObject(hit);
+                    else if (quizState === 'answering') toggleUserSelection(hit);
+                } else if (currentAppMode === 'game') {
+                    if (gameState.isAnswering) {
+                        if (hit.userData.type === targetType && hit !== refObject) {
+                            const id = hit.userData.id;
+                            if (userSelectedIds.has(id)) {
+                                userSelectedIds.delete(id);
+                                if (hit.userData.type === 'edge') hit.material.color.setHex(0xaaaaaa);
+                                if (hit.userData.type === 'face') { hit.material.color.setHex(0x888888); hit.material.opacity = 0.3; }
+                            } else {
+                                userSelectedIds.add(id);
+                                hit.material.color.setHex(0xffff00);
+                                if (hit.userData.type === 'face') hit.material.opacity = 0.6;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function setReferenceObject(obj) {
+            refObject = obj;
+            refObject.material.color.setHex(0xff00ff);
+            if(refObject.userData.type === 'face') refObject.material.opacity = 0.6;
+            
+            quizState = 'question_select';
+            document.getElementById('quiz-questions').style.display = 'grid';
+            document.getElementById('quiz-instruction').innerHTML = "② 問題を選んでください。";
+            
+            const isFace = refObject.userData.type === 'face';
+            const skewBtn = document.getElementById('btn-quiz-skew');
+            skewBtn.disabled = isFace;
+            skewBtn.style.opacity = isFace ? 0.3 : 1;
+            
+            updateDescription("基準となる図形（ピンク）を決めました。<br>この図形に対する関係を選んでください。");
+        }
+
+        function startQuiz(relation, target) {
+            relationType = relation;
+            targetType = target;
+            quizState = 'answering';
+            document.getElementById('quiz-questions').style.display = 'none';
+            document.getElementById('quiz-actions').style.display = 'block';
+            let typeText = target === 'edge' ? "辺" : "面";
+            let relText = relation === 'parallel' ? "平行" : relation === 'perpendicular' ? "垂直" : "ねじれの位置";
+            document.getElementById('quiz-instruction').innerHTML = `③ <b>${relText}な${typeText}</b>を全てクリックして選んでください。`;
+            updateDescription(`【問題】<br>ピンクの図形と<b>「${relText}」な「${typeText}」</b>を全て選んで、<br>最後に「答え合わせ」を押してください。`);
+        }
+
+        function toggleUserSelection(obj) {
+            if (obj === refObject) return;
+            if (targetType && obj.userData.type !== targetType) return;
+            
+            const id = obj.userData.id;
+            if (userSelectedIds.has(id)) {
+                userSelectedIds.delete(id);
+                if (obj.userData.type === 'edge') obj.material.color.setHex(0xaaaaaa);
+                if (obj.userData.type === 'face') {
+                    obj.material.color.setHex(0x888888);
+                    obj.material.opacity = 0.3;
+                }
+            } else {
+                userSelectedIds.add(id);
+                obj.material.color.setHex(0xffff00);
+                if (obj.userData.type === 'face') obj.material.opacity = 0.6;
+            }
+        }
+
+        // --- Free Mode Check Answer (RESTORED) ---
+        function checkAnswer() {
+            if (quizState !== 'answering') return;
+            quizState = 'feedback';
+            
+            let correctCount = 0; let wrongCount = 0; let missedCount = 0;
+            
+            interactiveObjects.forEach(obj => {
+                if (obj === refObject) return;
+                
+                if (targetType && obj.userData.type !== targetType) {
+                    if(obj.userData.type === 'edge') obj.material.color.setHex(0x333333);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.05;
+                    return;
+                }
+
+                const isMatch = checkRelationship(refObject.userData, obj.userData, relationType);
+                const isSelected = userSelectedIds.has(obj.userData.id);
+
+                if (isMatch && isSelected) {
+                    obj.material.color.setHex(0x00ff00);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.8;
+                    correctCount++;
+                } else if (!isMatch && isSelected) {
+                    obj.material.color.setHex(0xff0000);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.8;
+                    wrongCount++;
+                } else if (isMatch && !isSelected) {
+                    obj.material.color.setHex(0x00ffff);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.5;
+                    missedCount++;
+                } else {
+                    if(obj.userData.type === 'edge') obj.material.color.setHex(0x333333);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.1;
+                }
+            });
+
+            document.getElementById('quiz-actions').style.display = 'none';
+            document.getElementById('quiz-instruction').innerHTML = "結果発表！";
+            
+            let msg = `<b>結果:</b><br>正解: ${correctCount}個<br>`;
+            if (wrongCount > 0) msg += `間違い: ${wrongCount}個 (赤)<br>`;
+            if (missedCount > 0) msg += `見逃し: ${missedCount}個 (水色)<br>`;
+            
+            if (wrongCount === 0 && missedCount === 0) {
+                msg += "<br><b style='color:#00ff00'>パーフェクト！素晴らしい！</b>";
+            } else {
+                msg += "<br>水色は選び忘れた正解です。";
+            }
+            updateDescription(msg);
+        }
+
+        // --- Game Mode Functions ---
+        
+        function startGame() {
+            gameState.currentQuestion = 0;
+            gameState.score = 0;
+            document.getElementById('game-start-screen').style.display = 'none';
+            document.getElementById('game-result-screen').style.display = 'none';
+            document.getElementById('game-play-screen').style.display = 'block';
+            nextGameQuestion();
+        }
+
+        function nextGameQuestion() {
+            gameState.currentQuestion++;
+            if (gameState.currentQuestion > gameState.totalQuestions) {
+                endGame();
+                return;
+            }
+
+            gameState.isAnswering = true;
+            userSelectedIds.clear();
+            refObject = null;
+            document.getElementById('game-progress').innerText = `第 ${gameState.currentQuestion} / ${gameState.totalQuestions} 問`;
+            document.getElementById('game-score').innerText = gameState.score;
+            document.getElementById('btn-game-check').style.display = 'inline-block';
+            document.getElementById('btn-game-next').style.display = 'none';
+            
+            const shapes = ['cuboid', 'tri_prism', 'penta_prism', 'trapezoid_prism'];
+            currentShapeType = shapes[Math.floor(Math.random() * shapes.length)];
+            clearScene();
+            if(currentShapeType === 'cuboid') buildCuboid();
+            else if(currentShapeType === 'tri_prism') buildTriangularPrism();
+            else if(currentShapeType === 'penta_prism') buildPentagonalPrism();
+            else if(currentShapeType === 'trapezoid_prism') buildTrapezoidalPrism();
+
+            let valid = false;
+            let attempts = 0;
+            
+            while (!valid && attempts < 200) {
+                attempts++;
+                const ref = interactiveObjects[Math.floor(Math.random() * interactiveObjects.length)];
+                const refType = ref.userData.type;
+                const targets = ['edge', 'face'];
+                const tType = targets[Math.floor(Math.random() * targets.length)];
+                
+                let allowedRel = [];
+                if (refType === 'edge' && tType === 'edge') allowedRel = ['parallel', 'perpendicular', 'skew'];
+                else allowedRel = ['parallel', 'perpendicular'];
+
+                const rType = allowedRel[Math.floor(Math.random() * allowedRel.length)];
+
+                let count = 0;
+                interactiveObjects.forEach(obj => {
+                    if (obj !== ref && obj.userData.type === tType) {
+                        if (checkRelationship(ref.userData, obj.userData, rType)) count++;
+                    }
+                });
+
+                if (count > 0) {
+                    valid = true;
+                    refObject = ref;
+                    targetType = tType;
+                    relationType = rType;
+                }
+            }
+
+            if (!refObject) {
+                refObject = interactiveObjects[0];
+                targetType = 'edge';
+                relationType = 'parallel';
+            }
+
+            refObject.material.color.setHex(0xff00ff);
+            if(refObject.userData.type === 'face') refObject.material.opacity = 0.6;
+
+            const tText = targetType === 'edge' ? "辺" : "面";
+            const rText = relationType === 'parallel' ? "平行" : relationType === 'perpendicular' ? "垂直" : "ねじれの位置";
+            document.getElementById('game-question-box').innerHTML = 
+                `ピンク色の図形に対して<br><b>「${rText}」な「${tText}」</b>を全て選んでください。`;
+            updateDescription("問題: 画面の指示に従って図形を選んでください。");
+        }
+
+        function checkGameAnswer() {
+            if (!gameState.isAnswering || !refObject) return;
+            gameState.isAnswering = false;
+
+            let correctFound = 0;
+            let totalCorrect = 0;
+            let wrongSelected = 0;
+
+            interactiveObjects.forEach(obj => {
+                if (obj === refObject) return;
+                
+                let isMatch = false;
+                if (obj.userData.type === targetType) {
+                    isMatch = checkRelationship(refObject.userData, obj.userData, relationType);
+                }
+
+                if (isMatch) totalCorrect++;
+
+                const isSelected = userSelectedIds.has(obj.userData.id);
+
+                if (isMatch && isSelected) {
+                    correctFound++;
+                    obj.material.color.setHex(0x00ff00);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.8;
+                } else if (!isMatch && isSelected) {
+                    wrongSelected++;
+                    obj.material.color.setHex(0xff0000); 
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.8;
+                } else if (isMatch && !isSelected) {
+                    obj.material.color.setHex(0x00ffff); 
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.5;
+                } else {
+                    if(obj.userData.type === 'edge') obj.material.color.setHex(0x333333);
+                    if(obj.userData.type === 'face') obj.material.opacity = 0.05;
+                }
+            });
+
+            let earned = 0;
+            if (correctFound === totalCorrect && wrongSelected === 0) {
+                earned = 20;
+                updateDescription("<b style='color:#00ff00'>正解！パーフェクト！ (+20点)</b>");
+            } else {
+                const raw = Math.floor((correctFound / (totalCorrect || 1)) * 20) - (wrongSelected * 5);
+                earned = Math.max(0, raw);
+                updateDescription(`<b>惜しい！</b><br>正解: ${correctFound}/${totalCorrect}個, ミス: ${wrongSelected}個<br>獲得: ${earned}点`);
+            }
+            
+            gameState.score += earned;
+            document.getElementById('game-score').innerText = gameState.score;
+
+            document.getElementById('btn-game-check').style.display = 'none';
+            document.getElementById('btn-game-next').style.display = 'inline-block';
+        }
+
+        function endGame() {
+            document.getElementById('game-play-screen').style.display = 'none';
+            document.getElementById('game-result-screen').style.display = 'block';
+            
+            const s = gameState.score;
+            document.getElementById('final-score').innerText = s;
+            
+            let comment = "";
+            if (s === 100) comment = "完璧です！空間図形マスター！";
+            else if (s >= 80) comment = "素晴らしい成績です！";
+            else if (s >= 60) comment = "合格点です！あと少し！";
+            else comment = "もう一度練習してみましょう！";
+            document.getElementById('final-comment').innerText = comment;
+        }
+
+        // --- Logic (Shared) ---
+        function checkRelationship(refData, targetData, relType) {
+            if (refData.type === 'edge' && targetData.type === 'edge') {
+                const isParallel = areVectorsParallel(refData.vector, targetData.vector);
+                
+                const vConnect = new THREE.Vector3().subVectors(targetData.p1, refData.p1);
+                const cross = new THREE.Vector3().crossVectors(refData.vector, targetData.vector);
+                const scalarTriple = Math.abs(cross.dot(vConnect));
+                const isCoplanar = scalarTriple < 0.1;
+
+                if (relType === 'parallel') return isParallel;
+                else if (relType === 'perpendicular') return areVectorsPerpendicular(refData.vector, targetData.vector) && getMinDistanceEdges(refData, targetData) === 0;
+                else if (relType === 'skew') return !isCoplanar;
+            } 
+            else if (refData.type === 'face' && targetData.type === 'face') {
+                if (relType === 'parallel') return areVectorsParallel(refData.normal, targetData.normal);
+                else if (relType === 'perpendicular') return areVectorsPerpendicular(refData.normal, targetData.normal);
+            }
+            else {
+                const edge = (refData.type === 'edge') ? refData : targetData;
+                const face = (refData.type === 'face') ? refData : targetData;
+                const distToFace = Math.abs(new THREE.Vector3().subVectors(edge.p1, face.center).dot(face.normal));
+                const isIncluded = distToFace < TOLERANCE && Math.abs(edge.vector.dot(face.normal)) < TOLERANCE;
+                if (relType === 'parallel') return areVectorsPerpendicular(edge.vector, face.normal) && !isIncluded;
+                else if (relType === 'perpendicular') return areVectorsParallel(edge.vector, face.normal);
+            }
+            return false;
+        }
+
+        function updateDescription(text) { document.getElementById('description-box').innerHTML = text; }
+        window.addEventListener('resize', updateCameraViewOffset);
+        updateCameraViewOffset(); 
+        
+        // Changed to 'click' for better accuracy and preventing drag-clicks
+        window.addEventListener('click', onMouseClick);
+        
+        switchMode('free'); 
+        
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        animate();
+
+    </script>
+</body>
+</html
